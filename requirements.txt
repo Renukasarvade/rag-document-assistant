@@ -4,8 +4,9 @@ python-dotenv
 PyPDF2
 sentence-transformers
 faiss-cpu
-numpy
+groq
 requests
 google-auth
 google-api-python-client
 pydantic
+streamlit
