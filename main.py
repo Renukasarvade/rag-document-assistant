@@ -8,7 +8,7 @@ Simple, clean RAG pipeline:
   3. Chunk text into segments
   4. Generate embeddings (SentenceTransformers)
   5. Store in FAISS vector DB
-  6. Answer questions using retrieved context + LLM (OpenRouter)
+  6. Answer questions using retrieved context + LLM (Groq)
 
 APIs:
   POST /sync-drive  → fetch & process files from Google Drive
@@ -26,7 +26,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
 from groq import Groq
 
 # ─── Google Drive SDK ──────────────────────────────────────────────────────────
@@ -40,10 +39,8 @@ load_dotenv()
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════
 
-GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-
-
+GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "")
 
 FAISS_INDEX_FILE = "faiss_index.bin"
@@ -62,8 +59,16 @@ _chunks_metadata = []
 
 
 def get_model():
+    """
+    Lazy-load the embedding model.
+    Model is NOT loaded at startup — only when first needed.
+    This lets the HTTP port open in ~1 second, fixing Render's
+    "No open ports detected" error caused by slow startup.
+    """
     global _embedding_model
     if _embedding_model is None:
+        # Import here so the module-level import cost is deferred too
+        from sentence_transformers import SentenceTransformer
         print("Loading embedding model ...")
         _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
         print("Embedding model ready.")
@@ -99,23 +104,35 @@ SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 
 def get_drive_service():
-    """Build Google Drive client using environment variable (for deployment)"""
-
+    """
+    Build Google Drive client.
+    - Local dev: reads from GOOGLE_SERVICE_ACCOUNT_FILE (path to .json file)
+    - Production/Docker: reads from GOOGLE_SERVICE_ACCOUNT_JSON (full JSON string)
+    """
     key_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
 
     if not key_json:
-        raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON not set in environment")
+        # Fallback for local dev — read from file path
+        key_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
+        if not key_file:
+            raise ValueError(
+                "Set either GOOGLE_SERVICE_ACCOUNT_JSON (full JSON string) "
+                "or GOOGLE_SERVICE_ACCOUNT_FILE (path to .json file) in your .env"
+            )
+        if not os.path.exists(key_file):
+            raise ValueError(f"Service account file not found: {key_file}")
+        with open(key_file, "r") as f:
+            key_json = f.read()
 
     try:
         key_data = json.loads(key_json)
     except json.JSONDecodeError:
-        raise ValueError("Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON")
+        raise ValueError("Invalid JSON in service account credentials")
 
     creds = service_account.Credentials.from_service_account_info(
         key_data,
         scopes=["https://www.googleapis.com/auth/drive.readonly"]
     )
-
     return build("drive", "v3", credentials=creds)
 
 def list_drive_files(service):
@@ -375,6 +392,12 @@ class AskRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Startup: only load the FAISS index from disk (fast, ~100ms).
+    Do NOT load the embedding model here — that takes 10-30 seconds
+    and causes Render to kill the app before the port is opened.
+    The model will lazy-load on the first real request instead.
+    """
     global _faiss_index, _chunks_metadata
     _faiss_index, _chunks_metadata = load_index()
     yield
@@ -426,8 +449,8 @@ def sync_drive():
     if not all_embeddings:
         return {"message": "No text could be extracted from any files.", "files_processed": 0}
 
-    combined      = np.vstack(all_embeddings)
-    _faiss_index  = build_faiss_index(combined)
+    combined         = np.vstack(all_embeddings)
+    _faiss_index     = build_faiss_index(combined)
     _chunks_metadata = all_metadata
 
     save_index(_faiss_index, _chunks_metadata)
@@ -467,8 +490,9 @@ def ask(body: AskRequest):
 def health():
     return {
         "status": "ok",
-        "vectors_loaded":    _faiss_index.ntotal if _faiss_index else 0,
-        "chunks_in_memory":  len(_chunks_metadata),
+        "vectors_loaded":   _faiss_index.ntotal if _faiss_index else 0,
+        "chunks_in_memory": len(_chunks_metadata),
+        "model_loaded":     _embedding_model is not None,
     }
 
 
