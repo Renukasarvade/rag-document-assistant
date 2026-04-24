@@ -1,0 +1,26 @@
+# Environment & Secrets — NEVER commit these
+.env
+service_account.json
+
+# Auto-generated vector DB files
+faiss_index.bin
+chunks_metadata.json
+drive_downloads/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+env/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

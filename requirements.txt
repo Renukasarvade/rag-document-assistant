@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-dotenv
+PyPDF2
+sentence-transformers
+faiss-cpu
+numpy
+requests
+google-auth
+google-api-python-client
+pydantic
