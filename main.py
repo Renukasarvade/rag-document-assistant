@@ -43,7 +43,7 @@ load_dotenv()
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json")
+
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "")
 
 FAISS_INDEX_FILE = "faiss_index.bin"
@@ -99,43 +99,24 @@ SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 
 def get_drive_service():
-    """Build an authenticated Google Drive service client."""
-    if not os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
-        raise FileNotFoundError(
-            "service_account.json not found. Download it from "
-            "Google Cloud Console > IAM & Admin > Service Accounts "
-            "> Keys > Add Key > JSON and place it next to main.py."
-        )
+    """Build Google Drive client using environment variable (for deployment)"""
 
-    # Validate file is non-empty and valid JSON before passing to Google SDK
-    with open(GOOGLE_SERVICE_ACCOUNT_FILE, "r", encoding="utf-8") as fh:
-        raw = fh.read().strip()
+    key_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
 
-    if not raw:
-        raise ValueError(
-            "service_account.json is empty. "
-            "Re-download the key from Google Cloud Console."
-        )
+    if not key_json:
+        raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON not set in environment")
 
     try:
-        key_data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            "service_account.json is not valid JSON: " + str(exc) + ". "
-            "Make sure you did not edit the file after downloading."
-        ) from exc
+        key_data = json.loads(key_json)
+    except json.JSONDecodeError:
+        raise ValueError("Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON")
 
-    required = {"type", "project_id", "private_key", "client_email", "token_uri"}
-    missing = required - key_data.keys()
-    if missing:
-        raise ValueError(
-            "service_account.json is missing fields: " + str(missing) + ". "
-            "Ensure you downloaded a Service Account key, not an OAuth client key."
-        )
+    creds = service_account.Credentials.from_service_account_info(
+        key_data,
+        scopes=["https://www.googleapis.com/auth/drive.readonly"]
+    )
 
-    creds = service_account.Credentials.from_service_account_info(key_data, scopes=SCOPES)
     return build("drive", "v3", credentials=creds)
-
 
 def list_drive_files(service):
     mime_filter = " or ".join([
