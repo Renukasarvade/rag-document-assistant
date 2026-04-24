@@ -7,16 +7,19 @@
 
 ##  What Is This Project?
 
-Imagine you have 10 PDF files in Google Drive — company policies, SOPs, research papers.  
-Instead of reading all of them manually, you just **ask a question** like:
-
-> *"What is the refund policy?"*
-
-And this system **reads the documents for you** and gives a **precise, detailed answer** with the **source file name**.
-
-That's exactly what this system does. It's called **RAG** — Retrieval-Augmented Generation.
+This project implements a Retrieval-Augmented Generation (RAG) system that allows users to query their own documents with high accuracy by combining semantic retrieval (FAISS) with LLM-based answer generation.
 
 ---
+## 🚀 Live Demo
+
+Watch the system in action:
+
+🎥 https://youtu.be/3m7L5kI_NCA
+
+✔ Google Drive document ingestion  
+✔ Semantic search using FAISS  
+✔ Context-aware answers using LLM  
+✔ Source-based responses  
 
 ## Architecture — How It All Fits Together
    Data
@@ -36,7 +39,7 @@ That's exactly what this system does. It's called **RAG** — Retrieval-Augmente
 
 
 
-#  Workflow — Plain English
+#  Workflow — Step-by-Step Execution
 
 # When you click "- Sync Drive Now"
 
